@@ -30,29 +30,12 @@
 
 namespace {
 
-#if defined(FAKE_DDR5_MODE_BLOCKING) && \
-    (defined(FAKE_DDR5_MODE_NONBLOCKING) || \
-     defined(MM_DDR5_SINGLE_STORAGE_NONBLOCKING))
-#error "Blocking and non-blocking fake_ddr5 modes are mutually exclusive."
-#endif
-
-#if defined(FAKE_DDR5_MODE_NONBLOCKING) || \
-    defined(MM_DDR5_SINGLE_STORAGE_NONBLOCKING)
+#if defined(MM_DDR5_SINGLE_STORAGE_NONBLOCKING)
 constexpr bool kNonBlockingMode = true;
 constexpr const char* kModeName = "non-blocking";
-#elif defined(FAKE_DDR5_MODE_BLOCKING)
+#else
 constexpr bool kNonBlockingMode = false;
 constexpr const char* kModeName = "blocking";
-#else
-// Keep backward compatibility: default to non-blocking-compatible behavior.
-constexpr bool kNonBlockingMode = true;
-constexpr const char* kModeName = "non-blocking(default)";
-#endif
-
-#if !defined(FAKE_DDR5_MODE_BLOCKING)
-#define FAKE_DDR5_HAS_READ_DATA_REPLY 1
-#else
-#define FAKE_DDR5_HAS_READ_DATA_REPLY 0
 #endif
 
 struct Ddr5InstanceState {
@@ -233,14 +216,14 @@ bool HasPendingRead(std::uint16_t id);
 
 }  // namespace
 
-#if FAKE_DDR5_HAS_READ_DATA_REPLY
+#ifdef MM_DDR5_SINGLE_STORAGE_NONBLOCKING
 extern "C" void s2h_ddr5_read_data_reply(const svBitVecVal* data, unsigned char valid);
 #endif
 
 namespace {
 
 void SendReadDataReply(const std::vector<svBitVecVal>& data, unsigned char valid) {
-#if FAKE_DDR5_HAS_READ_DATA_REPLY
+#ifdef MM_DDR5_SINGLE_STORAGE_NONBLOCKING
   s2h_ddr5_read_data_reply(data.data(), valid);
 #else
   (void)data;
