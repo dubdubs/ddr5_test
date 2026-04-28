@@ -49,6 +49,12 @@ constexpr bool kNonBlockingMode = true;
 constexpr const char* kModeName = "non-blocking(default)";
 #endif
 
+#if !defined(FAKE_DDR5_MODE_BLOCKING)
+#define FAKE_DDR5_HAS_READ_DATA_REPLY 1
+#else
+#define FAKE_DDR5_HAS_READ_DATA_REPLY 0
+#endif
+
 struct Ddr5InstanceState {
   unsigned int data_width = 256U;
   unsigned int data_byte_width = 32U;
@@ -227,9 +233,20 @@ bool HasPendingRead(std::uint16_t id);
 
 }  // namespace
 
+#if FAKE_DDR5_HAS_READ_DATA_REPLY
 extern "C" void s2h_ddr5_read_data_reply(const svBitVecVal* data, unsigned char valid);
+#endif
 
 namespace {
+
+void SendReadDataReply(const std::vector<svBitVecVal>& data, unsigned char valid) {
+#if FAKE_DDR5_HAS_READ_DATA_REPLY
+  s2h_ddr5_read_data_reply(data.data(), valid);
+#else
+  (void)data;
+  (void)valid;
+#endif
+}
 
 bool PopPendingRead(std::uint16_t id, std::uint64_t* addr) {
   if (addr == nullptr) {
@@ -346,15 +363,8 @@ extern "C" void h2s_ddr5_read_data_request(const svBitVecVal* bfm_id,
                                             const svBitVecVal* left_space) {
   const std::uint16_t id = ReadU16(bfm_id);
   if (!kNonBlockingMode) {
-    std::vector<svBitVecVal> out;
-    {
-      std::lock_guard<std::mutex> lock(g_lock);
-      const Ddr5InstanceState& st = Instance(id);
-      out = ZeroData(st.data_width);
-    }
-    s2h_ddr5_read_data_reply(out.data(), 0U);
     LogEvent(1,
-             "read_data_request ignored in blocking mode bfm_id=0x%04x -> invalid",
+             "read_data_request ignored in blocking mode bfm_id=0x%04x",
              static_cast<unsigned>(id));
     return;
   }
@@ -371,7 +381,7 @@ extern "C" void h2s_ddr5_read_data_request(const svBitVecVal* bfm_id,
       out = ZeroData(st.data_width);
       byte_count = st.data_byte_width;
     }
-    s2h_ddr5_read_data_reply(out.data(), 0U);
+    SendReadDataReply(out, 0U);
     LogEvent(2, "read_data_request bfm_id=0x%04x left_space=0 -> invalid",
              static_cast<unsigned>(id));
     return;
@@ -384,7 +394,7 @@ extern "C" void h2s_ddr5_read_data_request(const svBitVecVal* bfm_id,
     out = has_req ? ReadDataLocked(id, addr) : ZeroData(st.data_width);
     byte_count = st.data_byte_width;
   }
-  s2h_ddr5_read_data_reply(out.data(), has_req ? 1U : 0U);
+  SendReadDataReply(out, has_req ? 1U : 0U);
   LogEvent(2, "read_data_request bfm_id=0x%04x addr=0x%016llx valid=%u",
            static_cast<unsigned>(id), static_cast<unsigned long long>(addr),
            has_req ? 1U : 0U);
@@ -398,15 +408,8 @@ extern "C" void h2s_ddr5_read_data_request(const svBitVecVal* bfm_id,
 extern "C" void h2s_ddr5_read_data_blocking(const svBitVecVal* bfm_id) {
   if (!kNonBlockingMode) {
     const std::uint16_t id = ReadU16(bfm_id);
-    std::vector<svBitVecVal> out;
-    {
-      std::lock_guard<std::mutex> lock(g_lock);
-      const Ddr5InstanceState& st = Instance(id);
-      out = ZeroData(st.data_width);
-    }
-    s2h_ddr5_read_data_reply(out.data(), 0U);
     LogEvent(1,
-             "read_data_blocking ignored in blocking mode bfm_id=0x%04x -> invalid",
+             "read_data_blocking ignored in blocking mode bfm_id=0x%04x",
              static_cast<unsigned>(id));
     return;
   }
