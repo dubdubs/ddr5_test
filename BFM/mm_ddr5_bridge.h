@@ -25,10 +25,12 @@ inline void wait(const sc_event&) {}
 #endif
 
 #include <atomic>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -145,12 +147,29 @@ class MMDDR5Bridge : public sc_core::sc_module,
   bool SendMsg(ssln::ddr5::DDR5Payload* msg, uint32_t msg_size);
 
   static MMDDR5Bridge* GetBridgeFromScope(svScope scope);
+  void MaybeReportPerf();
 
  private:
+  struct PerfStats {
+    std::atomic<uint64_t> tx_write_req{0};
+    std::atomic<uint64_t> tx_read_req_sync{0};
+    std::atomic<uint64_t> tx_read_req_async{0};
+    std::atomic<uint64_t> tx_read_data_req{0};
+    std::atomic<uint64_t> tx_read_data_blocking{0};
+    std::atomic<uint64_t> rx_read_resp{0};
+    std::atomic<uint64_t> rx_nonread_resp{0};
+    std::atomic<uint64_t> wait_count{0};
+    std::atomic<uint64_t> wait_ns_total{0};
+    std::atomic<uint64_t> wait_ns_max{0};
+    std::atomic<uint64_t> queue_empty_poll{0};
+    std::atomic<uint64_t> report_tick{0};
+  };
+
   uint32_t m_comp_id;
   uint32_t queue_size;
   uint32_t id_count;
   std::atomic<bool> running_;
+  PerfStats perf_;
 
   ssln::hybrid::BridgeDispatcher* dispatcher;
   ssln::hybrid::SslnProfiling* profiling;
@@ -158,6 +177,7 @@ class MMDDR5Bridge : public sc_core::sc_module,
 
   std::mutex id_mutex;
   std::unordered_map<uint32_t, uint32_t> bfmid_index;
+  std::array<std::atomic<uint32_t>, 65536> bfm_index_cache;
   std::vector<uint32_t> bfm_data_width;
   std::vector<std::pair<uint64_t, uint64_t>> bfm_read_count;
   std::vector<moodycamel::ReaderWriterQueue<ipc::buffer*>*> recv_responses;
